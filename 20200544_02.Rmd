@@ -1,0 +1,646 @@
+---
+title: "Assignment 2"
+author: "Abhishek Kumar"
+date: "21/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+install.packages("GGally")
+```
+
+
+
+```{r libraries}
+library(psych)
+library(ggcorrplot)
+library(plotly)
+library(heatmaply)
+library(GGally)
+library(corrplot)
+library(car)
+```
+
+
+# Loading data
+```{r}
+sba2013 = read.csv("/home/abhishek/Desktop/Pridctive analytics/Assignment 2/SBA_2013.csv")
+str(sba2013) # dataframe has 2458 observations and 10 variables
+head(sba2013)
+``` 
+
+## Exploratory data analysis
+
+Analyzing the response variable GrAppv (Gross Amount of Loan Approved by Bank), from the hist plot it can be seen that GrApprv has majority of observations values in the lower end for the range and it can be said that it is right skewed as mean is not equal to median. To remove the skew I took log on the values of this variable and made the distribution conform to normality.
+There may to be some groupings in the response variable  as I see couple of peaks in the density curve of GrAppv.
+
+```{r EDA}
+
+hist(sba2013$GrAppv) # As seen from the plot GrApprv has majority of values in the lower end for the range of observations and can be that its right skewed.
+sba2013$GrAppv = log10(sba2013$GrAppv) # To make it conform to normal distribution I am taking log on this variable.  
+hist(sba2013$GrAppv, freq = FALSE, xlab = "Gross Amount of Loan Approved by Bank", main = "Hist plot: GrAppv")
+lines(density(sba2013$GrAppv), col = "red")
+
+```
+
+Converting categorical variables to factors
+
+```{r factors}
+sba2013$UrbanRural = sba2013$UrbanRural -1 # In order to change the values to 0 and 1
+sba2013$NewExist = sba2013$NewExist - 1 # In order to change the values to 0 and 1, now Existing Business indicated by 0 and New Business indicated by 1
+cols = c("State", "NewExist", "UrbanRural")
+sba2013[cols] = lapply(sba2013[cols], factor) # converting these columns into factor type as they are categorical variables
+str(sba2013)
+head(sba2013)
+```
+
+
+# Analyzing categorical variable State, NewExist, and UrbanRural
+
+1. State: Form the boxplot of amount approved in different states, I can see that there is small variability in the gross amount of loan approved state wise, as all the boxes appears to be present in the constant band. There is some variability in the median but that appears to be small among all the categories of the variable state, so state can be excluded from the model to predict the Gross amount approved by bank.
+
+Also after considering it in the model along with other variables, the  high p-values for each state suggests that they are not significantly different from 0 and can be excluded from the model. The adjusted and multiple r2 values are also not changing a for the model with State included.
+
+Also, I checked the correlation of each state from categorical variable State with GrAppv and it is observed that each state has very low correlation with GrAppv approximately below 0.1.
+
+So, based on these observations I can say, State is not providing enough enough information to be included in the model.
+
+
+2. NewExist : 
+There seem to be difference in the median of gross approved loan for both the groups i.e new and existing businesses as seen from boxplot, median are different for both the groups. Same can be observed from the sumary stats.
+
+Average loan approved for Existing businesses is 5.010617 where as for new businesses its around 4.815524. 
+For exixting businesses 50% of organizations has GrAppv amount less than 5.000000, and for new businesses 50% of organizations received amount less than 4.728262
+
+3. UrbanRural:
+
+There doesn't seem to difference in the gross approved loan for both the groups i.e urban and rural as from the boxplot it can be observed that the boxes are overlapping for both the groups, and median and Interquartile ranges are approximately equal.
+
+From the summary stats it is observed that average amount of GrAppv amount is approximately same for both urban (4.953678) and rural(4.965264) observations, and 50% of observation had GrAppv approved loan below 4.903090 for urban and 4.915927 for the rural. Inter quntile range is approximately same in both cases i.e urban (0.9982663), rural (0.9208188).
+
+```{r}
+# This function takes in input the response variable and the factor variable on which summary stats has to be calvulated for different groups.
+# return mean, median, Quantile 1 and 3, Inter-quartile range.
+
+summary_predictors = function(response, group){
+   
+   #summary_expl_variable = data.frame()
+   mean = tapply(response, group, mean)
+   median = tapply(response, group, FUN=median)
+   Q1 = tapply(response, group, FUN=quantile, 0.25)
+   Q3 = tapply(response, group, FUN=quantile, 0.75)
+   IQR = Q3 - Q1
+   summary_expl_variable = data.frame(mean, median, Q1, Q3, IQR)
+   return(summary_expl_variable)
+ }
+
+
+# NewExist
+
+boxplot(sba2013$GrAppv~sba2013$NewExist,xlab = "Businesses new or old",ylab = "Gross Amount of Loan Approved by Bank",  las = 2)
+summary_predictors(sba2013$GrAppv, sba2013$NewExist)
+
+# UrbanRural
+
+boxplot(sba2013$GrAppv~sba2013$UrbanRural,xlab = "Region : Urban or Rural",ylab = "Gross Amount of Loan Approved by Bank",  las = 2)
+summary_predictors(sba2013$GrAppv, sba2013$UrbanRural)
+
+#State
+boxplot(sba2013$GrAppv~sba2013$State,xlab = "State",ylab = "Gross Amount of Loan Approved by Bank",  las = 2)
+summary_predictors(sba2013$GrAppv, sba2013$State)
+
+summary(lm(GrAppv~Term + NoEmp +State+ NewExist + CreateJob + RetainedJob + SBA_Appv, data = sba2013))
+
+# checking correlation of each category of state with GrAppv, creating dummy variables for observations with 1 representing when they are in particular state and 0 when it is not in the particular state.
+
+State.matrix = model.matrix(~State, data=sba2013)
+dummy.matrix=State.matrix
+sba2013_2 = data.frame(dummy.matrix)
+head(sba2013_2)
+cor(sba2013$GrAppv,sba2013_2)
+
+```
+
+# Analyzing the Numerical Variables Term, NoEmp, CreateJob, RetainedJob, SBA_Appv
+
+From the correlation values we can see that GrAppr has weak positive correlation with these variables, So, they can be a valid predictor variable for predicting the response variable.
+
+Although, SBA_Appv showed high positive correlation with the response variable GrAppv, but the shape of the plot appeared to be non-linear, so even though I took it as as a predictor variable it needs further investigation and the problem can be fixed by taking log of the values and bring in on similar scale as the response variable GrAppv.
+
+Term (0.1948589) : No strong Non linear shape was found in the scatter plot suggesting that linear relationship b/w Term and response variable.
+NoEmp (0.3231847) : No strong Non linear shape was found in the scatter plot suggesting that linear relationship b/w Term and response variable.
+CreateJob (0.1979813) : No strong Non linear shape was found in the scatter plot suggesting that linear relationship b/w Term and response variable.
+RetainedJob (0.3667912) : No strong Non linear shape was found in the scatter plot suggesting that linear relationship b/w Term and response variable.
+SBA_Appv (0.6978475) : Non - linear patter observed in the scatter plot, I included it in the model as it is strongly correlated with the response variable and provide useful information in the model to predict GrAppv.
+
+
+```{r}
+num_vars = c("Term", "NoEmp", "CreateJob", "RetainedJob", "SBA_Appv","GrAppv" ) # Numerical variables
+cor(sba2013[num_vars], sba2013$GrAppv)
+
+# code to get correlation plot of numeric variables
+corr = cor(sba2013[num_vars]) # correlation matrix
+pv_mat = cor_pmat(sba2013[num_vars]) 
+corr.plot = ggcorrplot(
+  corr, hc.order = TRUE, type = "lower", outline.col = "white",
+  p.mat = pv_mat
+  )
+corr.plot
+
+pairs(sba2013[num_vars]) # scatter plot of each variable with respect to the response variable.
+
+```
+
+## Regression Modelling (85 marks)
+
+# Multiple linear regression model.
+
+Response variable is GrAppv.
+Numerical predictor variables considered for the models are "Term", "NoEmp", "CreateJob", "RetainedJob", "SBA_Appv"
+Categorical predictor variable considered for the model is "NewExist"
+
+(GrAppv)i = beta0 + beta1*(Term)i + beta2*(NoEmp)i + beta3*(NewExist1)i + beta4*(RetainedJob)i + beta5(CreateJob)i +beta6(SBA_Appv)i +(error)i
+
+So, in our model, Existing Business = 0 is the dummy variable, New Business = 1 becomes the reference variable.
+
+Above equation defines the multiple linear regression model, where GrAppv is the response/dependent variable and "Term", "NoEmp", "CreateJob", "RetainedJob" are the predictor variables.
+
+Beta0 : It is the intercept term and the 4.626e+00 is the expected value of Gross Amount of Loan Approved by Bank (GrAppv) when all the explanatory variables are fixed at a particular value and that organization/observation in not in the reference category, i,e 4.626 is the GrAppv for an Existing business, holding other variables fixed.
+
+beta1 :1.596e-03 is the expected change in gross Gross Amount of Loan Approved by Bank (GrAppv) when loan term is increased by 1 unit holding all other variables fixed.
+
+beta2 : 1.321e-03 is the change in the gross Gross Amount of Loan Approved by Bank (GrAppv) when number of business employees in an organization is increased by 1 unit holding all other variables fixed.
+
+beta3 :  -7.791e-02 is the expected decrease in the gross Gross Amount of Loan Approved by Bank (GrAppv) when business type is in reference category, i.e -7.791e-02 is the expected decrease in GrAppv when organization is a new Business.
+
+beta4 : 4.989e-03 is the expected change in the gross Gross Amount of Loan Approved by Bank (GrAppv) when number of jobs created by a particular organization is increased by 1 unit holding all other variables fixed.
+
+beta5 : 3.851e-03 is the expected change in the gross Gross Amount of Loan Approved by Bank (GrAppv) when number of jobs retained by a particular organization is increased by 1 unit holding all other variables fixed.
+
+beta6 : 7.887e-07 is the expected change in the gross Gross Amount of Loan Approved by Bank (GrAppv) when SBA’s Guaranteed Amount of Approved Loan of a particular organization is increased by 1 unit holding all other variables fixed.
+
+
+
+```{r}
+# Fitting Multi-linear regression model with response GrAppv as the response variable and "Term + NoEmp + NewExist + CreateJob + RetainedJob + SBA_Appv" as predictor variable.
+
+mod = lm(sba2013$GrAppv~ Term + NoEmp + NewExist + CreateJob + RetainedJob + SBA_Appv, data = sba2013)
+summary(mod)
+
+#Y = matrix(sba2013$GrAppv, ncol = 1, nrow = length(sba2013$GrAppv))
+
+```
+
+# (a) Diagnostics tests on the regression model (40 marks):
+
+#1. Check the linearity assumption of your model. Provide a reasonable justification as to whether your model satisfies the linearity assumption, and provide supporting evidence.
+
+1. Scatterplots:
+
+GrAppv vs Term : There appears to be no strong non-linear pattern in the relationship between term of loan and Gross approved loan amount. So we can say that relationship is relatively linear. It can be seen from the plot that there is higher variation in GrAppv at lower term periods.
+
+GrAppv vs NoEmp : There relationship is linear in general, and the variation in GrAppv amount is higher at low Number of business employees. There appears to be couple of organizations for which there is large number of employess but GrAppv is not as high.
+
+GrAppv vs CreateJob : There relationship is linear in general, and the variation in GrAppv amount decreases with increase in the number of jobs created in an organization. There appears to be few organizations for which there is large number of jobs created but GrAppv is not high enough.
+
+GrAppv vs RetainedJob : There relationship is linear in general and there no strong non-linear in the data, and the variation in GrAppv amount decreases with increase in the number of jobs retained in an organization. 
+
+GrAppv vs SBA_Appv : Strong non linear pattern observed in the scatter plot, so It needs further investigation as it can lead to biased and inconsistent estimates. This can be fixed by taking log on the values of this variable.
+
+
+2. Added-Variable plot: can be used for examining the effect of particular predictor variable on our response variable while holding all other predictor variables constant.
+
+1st plot indicates that, if we already have  "NoEmp", "CreateJob", "RetainedJob", "SBA_Appv", "NewExist2" in our model and we add "term" variable in the model it does have significant impact on the GrAppv as slope of the fitted line is positive suggesting that change in Term duration will increase the GrAppv.
+
+2nd plot indicates that, if we already have  "Term", "CreateJob", "RetainedJob", "SBA_Appv","NewExist2" in our model and we add "NoEmp" variable in the model it does have significant impact on the GrAppv as slope of the fitted line is positive suggesting that change in Number of employees in the organization will increase the GrAppv.
+
+3rd plot indicates that, if we already have  other variable in our model and we add "NewExist2" variable in the model it does have significant impact on the GrAppv as slope of the fitted line is negative suggesting that for an organization belonging to new business category the gross approved loan amount decreases (GrAppv).
+
+4th plot indicates that, if we already have  other variables in our model and we add "CreateJob" variable in the model it does have significant impact on the GrAppv, as slope of the fitted line is positive suggesting that increase in Number of jobs created in the organization will increase the GrAppv.
+
+5th plot indicates that, if we already have  other variables in our model and we add "RetainedJob" variable in the model it does have significant impact on the GrAppv, as slope of the fitted line is positive suggesting that increase in Number of jobs retained in the organization will increase the GrAppv.
+
+6th plot indicates that, if we already have  other variables in our model and we add "SBA_Appv" variable in the model it does have significant impact on the GrAppv, as slope of the fitted line is positive suggesting that increase in SBA’s Guaranteed Amount of Approved Loan for the organization will increase the Gross Amount of Loan Approved by Bank(GrAppv).
+
+3. Component plus-residual plots can be used to examine if the relationship between the response and the predictor variable is linear or not.
+
+I expect the general trend of the data to follow a linear curve.
+
+In general for each variable the general trend of the data is is closely following the linear curve but due to some extremely significant observations or possible outliers. the curve is deviatiating from the the linear path indicated by blue line.
+SBA_Apprv shows string non-linearity as there is a big cluster at the lower SBA_Apprv region from 0 to e^6, but this can be easiliy by taking log of the varaible and making it conform to normal distributopn.
+
+Form the box plot of NewExist categories it can be seen that median are different for both the groups i.e existing business represented by 0 and new business represented by 1.
+
+So, from the crPlots of different variables with the response variable, it can be concluded that on general the GrAppv satisfy the linearity assumption for all the variables (Term + NoEmp + NewExist + CreateJob + RetainedJob) and except SBA_Apprv that can be fixed by taking log on it. And for other variables handing with the outliers can further reduce the deviation from the linear curve.
+
+
+```{r}
+
+ggpairs(sba2013[, c("Term", "NoEmp", "CreateJob", "RetainedJob", "SBA_Appv","GrAppv")])
+avPlots(mod)
+crPlots(mod)
+
+```
+
+
+#2. What are the consequences of the model not satisfying the linearity assumption?
+
+If the model doesn't satisfy the linearity assumptions then our model will produce biased and inconsistent estimates, that mean if we test our model on new data it will lead to inconsistent predictions and model wont be accurate.
+
+#3. The linear regression model assumes that you have an independent and identically distributed random sample. Provide a reasonable justification as to whether your model satisfies this assumption, and provide supporting evidence.
+
+
+Independence means that the value for one observation is unlikely to be influenced by the value of another observation.
+As seen from the structure of the data-set we have 2458 observations in my dataframe, but some of the observations are repeating as observed from identifying the duplicate rows in the model. It suggests that all the rows are not independent from each other other and there appears to be some dependency among observations. This can be fixed easily by removing the repeated rows as this can be data entry error in the dataset.
+
+```{r}
+str(sba2013)
+#duplicated(sba2013)
+sba2013[which(duplicated(sba2013)),] # Duplicate entries in the dataframe.
+
+```
+
+
+#4. What are the consequences of the data not being from an independent and identically distributed random sample? (2 marks)
+
+No bias with appropriate alternative assumptions.
+Violations imply heteroskedasticity that means unequal scattering of errors terms.
+outliers from different distributions can cause inefficiency/bias.
+
+
+#5. An assumption of the linear regression model is that you have no multicollinearity in your model. Provide a reasonable justification as to whether your model satisfies this assumption, and provide supporting evidence.
+
+
+Assumption is that there is no multi-correlation in the data i.e the independent variables are not highly correlated with each other.
+
+1.I can do this by checking the correlation values between the variables using correlatiopn matrix.
+correlation between NoEmp and RetainedJob is 0.61 suggesting moderate positive correlation between these two variables, so there can be some sort of correlation between them and needs further investigation, I will check the VIF factor for the varibale and see if there is any issue. Apart from this rest of the variable have very weak to weak correlation with each other amd corrleation values are below 0.3.
+
+2.VIF factor:
+We can check the the variation inflation factor of each predictors in the model, which is calculated by VIFj - 1/(1-R2j).
+VIF factor around 1 means there is no correlation between the jth predictor and the other predictor variables.
+
+In my model VIF factor for each predictor variable is less than 4, so I can assume that there is no issue of multicollinearity among predictor variables in our model.
+
+
+```{r}
+
+cor_mat = cor(sba2013[, c("Term", "NoEmp", "CreateJob", "RetainedJob", "SBA_Appv")]) # correlation matrix
+corrplot.mixed(cor_mat)
+vif(mod)
+```
+#6. What are the consequences of having multicollinearity in your model
+
+When the predictors of a model are are not correlated that means all the observations are independent and matrix formed with predictor variables form a full rank matrix, the LSE estimators beta is stable in this case and we can get meaningful interpretation to estimates beta's. If there is no multicollinearity, then the estimate of some beta will be the same regardless of what other predictor variables we included in or model.
+Whereas, if there exists a strong correlation between two
+predictor variable's say Xj and Xk , then the estimates of betas becomes unstable. The estimate of beta of any particular feature will be strongly affected by other features that are included in the model.
+Thus, if the predictor variables are correlated we cannot interpret the regression coefficients properly as there will be no unique solution for the beta's as varables are not all independent.
+
+
+#7. The linear regression model assumes that the residuals have a zero conditional mean. Provide a reasonable justification as to whether your model satisfies this assumption, and provide supporting evidence.
+
+
+From the summary stats we can see that average error in our model is 0 across the mean. From the scatterplot I can see that error values are randomly scattered above and below the mean 0 under a constant band of 0.75 to -0.75, but many outliers can be seen on lower side of the band.
+
+I can also observe that positive errors are tightly packed on the upper band limit of around 0.6, but there is more variability in negative error's as many errors  can be seen outside approximate lower limit of the band i.e -0.75.If error's are negative means that predicted value of GrAppv is higher than the actual value, and we have more negative error's in my model suggesting that model is overestimating the Gross Amount of Loan Approved by Bank.
+
+So based on the results from the plots and stats I can say in general we have zero error across the mean, so residuals follow the assumption of zero conditional mean.
+
+```{r}
+
+summary(mod$residuals)
+plot(mod$residuals)
+
+length(mod$residuals[mod$residuals < -0.8])
+
+# Influential observations in the model
+cooksd = cooks.distance(mod)
+plot(cooksd, pch = "*", cex = 2, main = "Influential observations by cooks distance")
+abline(h = 4*mean(cooksd, na.rm =T), col ="Red")
+# adding labels
+text(x=1:length(cooksd)+1, y=cooksd, 
+     labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),
+                   names(cooksd),""), col="red")
+
+```
+
+8. An assumption of the linear regression model is that the residuals have constant variance. Provide a reasonable justification as to whether your model satisfies this assumption, and provide supporting evidence.
+
+From the scatter plot I can see that error values are randomly scattered above and below the mean 0 under a constant band of 0.75 to -0.75, but there are many outliers that can be seen on lower side of the band. I can see there are 58 observations which has extremely high negative error, suggesting there is higher number of iobservation with negative error that means the model is predicting higher values for GrAppv than actual value encountered.
+
+In general the residual average is 0 and in constant band , so I can say that my model follows assumptions that residuals have constant variance. By handling the observations with extreme negative error values we can make the band more compact in both ends.
+
+```{r}
+
+plot(mod$residuals)
+length(mod$residuals[mod$residuals < -0.8])
+mod$residuals[mod$residuals < -0.8] # Values showing extremely high negative errors.
+
+```
+
+#9. What are the consequences of having non-constant variance in your model (2 marks)?
+
+If error's produced by the models for each observation is not having constant variance, then it means that they are not random and they may exist some sort of relation ship between the errors of individual observations. Due to non-constant variance estimates of beta's would not be unbiased and may lead to inconsistent predictions of the response variable.
+
+#10. The linear regression model assumes that the residuals are normally distributed. Provide a reasonable justification as to whether your model satisfies this assumption, and provide supporting evidence.
+
+
+The P-value of 2.2e-16 is less than 0.05 which indicates that residual do not follow the normal distribution.
+
+Form the boxplot and histogram, I can see that residuals are not symmetric as median is not cutting the box in two equal parts. Also there are few observations with unusually high negative errors indicating skewed distribution.
+
+From QQ plots, I compared the distribution in our data calculated at the same quantiles as from the sample quantiles from the normal distribution. I can see that quantiles from my dataset are not strictly following the Normal distribution curve tend to deviate at the tails. This suggests that residuals are not perfectly normally distributed and there seems to be an asymmetry in the curve at the upper and lower tail.
+
+Cooks distance can give the influence exerted by each observation on the predicted outcomes. Influential datapoints change the fit and can be removed from the dataset to improve the models prediction. Removing the influential datapoints can reduce the larger error values and hence normalize residual distribution.
+
+Based on the findings I can say that residuals doesn't follow the normality assumptions and needs to be mormalized by removing the influential datapoints from our dataset to perform the F and T tests.
+
+
+```{r}
+res = mod$residuals
+shapiro.test(res)
+
+par(mfrow =c(1,2))
+boxplot(res)
+hist(res, freq = FALSE )
+lines(density(res), col = "red")
+par(mfrow = c(1,1))
+
+qqnorm(res)
+qqline(res, col= "blue")
+
+length(which(res< -1.5)) # Number of observation for which negative errors are extremely high.
+
+# Influential observations in the model
+cooksd = cooks.distance(mod)
+plot(cooksd, pch = "*", cex = 2, main = "Influential observations by cooks distance")
+abline(h = 4*mean(cooksd, na.rm =T), col ="Red")
+# adding labels
+text(x=1:length(cooksd)+1, y=cooksd, 
+     labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),
+                   names(cooksd),""), col="red")
+
+```
+
+
+#11. What are the consequences of non-normal residuals in your model?
+
+If the distributions of the residuals are not normal then we wont be able to perform hypothesis tests like T-test, F-Tests and calculate confidence, prediction intervals on the model.
+
+# (b) Interpret the regression model:
+
+#1. Interpret the estimate of the parameters β in your model
+
+Response variable is GrAppv
+Numerical predictor variables considered for the models are "Term", "NoEmp", "CreateJob", "RetainedJob", "SBA_Appv"
+Categorical predictor variable considered for the model is "NewExist"
+
+(GrAppv)i = beta0 + beta1*(Term)i + beta2*(NoEmp)i + beta3*(NewExist1)i + beta4*(RetainedJob)i + beta5(CreateJob)i +beta6(SBA_Appv)i +(error)i
+
+So, in our model, Existing Business = 0 is the dummy variable included in the model as NewExist1, New Business = 1 is the reference variable.
+
+Above equation defines the multiple linear regression model, where GrAppv is the response/dependent variable and "Term", "NoEmp", "CreateJob", "RetainedJob" are the predictor variables.
+
+Beta0 : It is the intercept term and the 4.626e+00 is the expected value of Gross Amount of Loan Approved by Bank (GrAppv) when all the explanatory variables are fixed at a particular value and that organization/observation in not in the reference category, i,e 4.626 is the GrAppv for an Existing business, holding other parameters fixed.
+
+beta1 :1.596e-03 is the expected change in gross Gross Amount of Loan Approved by Bank (GrAppv) when loan term in months is increased by 1 unit holding all other variables fixed.
+
+beta2 : 1.321e-03 is the change in the gross Gross Amount of Loan Approved by Bank (GrAppv) when number of business employees is increased by 1 unit holding all other variables fixed.
+
+beta3 :  -7.791e-02 is the expected decrease in the gross Gross Amount of Loan Approved by Bank (GrAppv) when business type is in reference category i.e -7.791e-02 is the expected decrease in GrAppv when organization is a new Business.
+
+beta4 : 4.989e-03 is the expected change in the gross Gross Amount of Loan Approved by Bank (GrAppv) when number of jobs created by a particular organization is increased by 1 unit holding all other variables fixed.
+
+beta5 : 3.851e-03 is the expected change in the gross Gross Amount of Loan Approved by Bank (GrAppv) when number of jobs retained by a particular organization is increased by 1 unit holding all other variables fixed.
+
+beta6 : 7.887e-07 is the expected change in the gross Gross Amount of Loan Approved by Bank (GrAppv) when SBA’s Guaranteed Amount of Approved Loan of a particular organization is increased by 1 unit holding all other variables fixed.
+
+
+```{r}
+summary(mod)
+```
+
+#2. Which values of the predictor variables will lead to the largest increase in log10(GrAppv)?
+
+From the coefficients of linear model developed, I can see that the model's best estimates that Gross Amount of Loan Approved by Bank for an organization when it belongs to an Existing business is 4.626, so from NewExist variable Existing business produces the largest increse in the log10(GrAppv)
+
+```{r}
+mod$coefficients
+max(mod$coefficients)
+```
+
+#3 Discuss the effect that one of the categorical variables in your model has on the E[log10(GrAppv)]
+
+Categorical variable in my model is "NewExist" which has two categories.
+
+Existing business represented by 0.
+New business represented by 1.
+
+NewExist = {1 : Reference category, 0 : otherwise}
+
+When I considered this variable to fit my model.
+
+New Business was made the reference variable in the model.
+Dummy variable is representing when an observation is from Existing business category.
+
+Beta0 coefficient i.e the Intercept term represents the GrAppv amount when the observation was not present in the reference category i.e it is not a New Business. And the model's best estimates that Gross Amount of Loan Approved by Bank for an organization when it belongs to an Existing business to be 4.626, with variance of about 1.605e-02. The probability of this intercept term to be zero is 2e-16 which is approximately zero, so we can reject the null hypothesis and say that Intercept term is significantly different from 0.
+
+beta5 is the is the expected decrease/increase in the gross Gross Amount of Loan Approved by Bank (GrAppv) when organization belongs to the reference category that is it is a New Business, while keeping other variables fixed.
+ -7.791e-02  is the models best estimate of decrease in GrApv when an organization belongs to a New business category with variance of 1.965e-02, and p-value is 7.55e-05 indicating it is significantly different from 0.
+
+
+#4. Which of the parameters β in your model are significantly different from zero. Provide supporting evidence.
+
+T-student test Hypothesis,
+
+Null hypothesis Ho : (Beta)i = 0 and alternate hypothesis is that (beta)i != 0.
+The p-value of each estimates of beta indicates the null hypothesis being true.
+
+if absolute value of  calculated T-statistics is greater than the t-statistics from the t-distribution at 5% significane level and 7 degrees of freedom as we have seven parameter's in the model.
+
+1. Intercept : T-statistics (288.185) > t-stats(alpha = 0.05, pdf =7 ) 1.9609323334695 from the t-distribution. Null hypothesis rejected that intercept term is zero. P-value of 2e-16  which is less than 0.05 also indicates the same.
+
+2. Term : T-statistics (10.403) > t-stats(alpha = 0.05, pdf =7 )1.9609323334695 from the t-distribution. Null hypothesis rejected that beta corresponding to term is zero. P-value of 2e-16 which is less than 0.05 also indicates the same.
+
+3. NoEmp : T-statistics (3.455) > t-stats(alpha = 0.05, pdf =7 )1.9609323334695 from the t-distribution. Null hypothesis rejected that beta corresponding to NoEmp is zero. P-value of 0.000559 which is less than 0.05 also indicates the same.
+
+4. NewExist1 : T-statistics (3.965) > t-stats(alpha = 0.05, pdf =7 )1.9609323334695 from the t-distribution. Null hypothesis rejected that beta corresponding to  NewExist1 is zero. P-value of 7.55e-05 which is less than 0.05 also indicates the same.
+
+5. CreateJob : T-statistics (4.844) > t-stats(alpha = 0.05, pdf =7 )1.9609323334695 from the t-distribution. Null hypothesis rejected that beta corresponding to  CreateJob is zero. P-value of 1.35e-06 which is less than 0.05 also indicates the same.
+
+6. RetainedJob : T-statistics (6.850) > t-stats(alpha = 0.05, pdf =7 )1.9609323334695 from the t-distribution. Null hypothesis rejected that beta corresponding to  RetainedJob is zero. P-value of 9.28e-12 which is less than 0.05 also indicates the same.
+
+7. SBA_Appv : T-statistics (41.783) > t-stats(alpha = 0.05, pdf =7 )1.9609323334695 from the t-distribution. Null hypothesis rejected that beta corresponding to  SBA_Apprv is zero. P-value of 2e-16 is less than 0.05 also indicates the same.
+
+So from summary statistics, I find all the values of beta's in my model are significantly different from the 0 as the p-values corresponding to all the estimates of beta are approximately zero. Also Absolute T-statistic value for each coefficient is greater than the t-distribution value at alpha equal to 0.05 i.e 5 percent significance level. So we can reject the null hypothesis for each of the estimators individually and say that they are significantly different from 0 and are each variable is contributing significant information in predicting the Gross Amount of Loan Approved by Bank and should be included in the model.
+
+```{r}
+summary(mod)
+t_dist = qt(1-(0.05/2), length(sba2013$GrAppv)-7) # t-stats, df is 7 as we have 7 parameters.
+print(paste("t-stats from t -sdistribution at 5% significance and 7 df:", t_dist))
+summary(mod)[["coefficients"]][, "t value"]
+t_test = list()
+for(t in summary(mod)[["coefficients"]][, "t value"]){
+  if (abs(t) > t_dist){
+    t_test = c(t_test, abs(t) > t_dist)
+  }
+}
+t_test
+```
+
+#5. Interpret the F-statistic in the output in the summary of the regression model. Hint: State the hypothesis being tested, the test statistic and p-value and the conclusion in the context of the problem.
+
+F-Statistics test:
+Null hypothesis is that all the beta's associated with predictor variables are 0. i.e beta1, beta2, beta3, beta4, beta5, beta6.
+Alternate hypothesis is that atleast of them will be not 0.
+
+F-statistics value from the output is 482.6 at df 6 (as we have 6 variables in the model which we are testing), 2450 is degrees of freedom for SSE.
+
+f-statistics from distribution at alpha significance level i.e f(alpha, p. n-p) is 2.102
+So as the calculated F-value (482.6) is much larger than the f-statistics value of 2.102, also P-value also suggests that probability of null hypothesis being true is 2.2e-16 which is less that 0.05 and approximately equal to zero. we can reject the null hypothesis and say that atleast one of them is not zero.
+
+We can say from the F- statistics hypothesis test that estiamtes of beta in our model is significantly different from 0.
+
+
+
+```{r}
+# Calculate the F 0.05, 1, 3
+
+qf(0.05, 6, 2450, lower.tail = FALSE) # Since f distribution has just one tail so we can set alpha as it is.
+summary(mod)$fstatistic # F-stats
+
+```
+
+# 6. Interpret the Adjusted R-squared value.
+
+Adjusted R2 of 0.54 means that model is able to explain 54% of variations in the response variable, i,e 54% pf variations in the Gross Amount of Loan Approved by Bank for different observation are explained by the predictor variales (Term + NoEmp + NewExist + CreateJob + RetainedJob + SBA_Appv) included in the model. So it can be said it is fair model.
+
+
+# 7. What is the difference between the Multiple R-squared and the Adjusted R-squared value?
+
+Multiple R squared : It is simply a measure of R-squared for models that have multiple predictor variables. Therefore it measures the amount of variation in the response variable that can be explained by the predictor variables present in the model. The key point is that when we add predictors to your model, the multiple R-squared will always increases, as a predictor will always provide some information about the response variable and explains its variation.
+
+Adjusted R-squared: It controls this increase, and adds penalties for the number of predictors in the model. Therefore it provides a balance between the most insignificant model, and the best fitting model. Generally, if we have a large difference between your multiple and the adjusted R-squared that indicates we might have overfit our model.
+
+In my model the difference between two values 0.5418-0.5407 is quite low, 0.0011.
+
+
+
+## (c) ANOVA 
+
+# 1. Compute and interpret the ANOVA Type I table for your model. Hint: State the hypothesis being tested, the test statistic and p-value and the conclusion in the context of the problem.
+
+Anova tells us the difference sources of variations in the model.
+
+ANOVA type 1: 
+
+In Anova type 1. ta we start with nothing in the model and sequentially add one by one the predictor variables in the model. We check what additional benefits we gain from adding each variable in the model. That is whether the addition of each variable in the model brings any significant variation in response variable.
+
+
+Null Hypothesis, H0 : Beta1 = beta2 = beta3 = beta4 = beta5 = beta6 is equal to 0
+Alternate Hypothesis, Ha : Not all the beta's are zero.
+
+Each term in the table takes 1 degree of freedom because its for 1 degree of freedom.
+
+1. Term :The first model in the ANOVA explains the difference between the model with just beta0 in it and the model when I included predictor "Term" in it. The variations in response variable "GrAppv" that was explained by including "Term" in the model is Sum of squares i.e 36.95. The p-value is telling the probability of the difference between the two models being equal to 0. F-statistics is obtained by MSR/MSE = 36.95/0.18 ~ 202.754
+Since the p-value for 1st model is 2.2e-16 which is less than 0, we can reject the null hypothesis and can conclude that variable "Term" is providing enough variations in "GrAppv" to be included in th model.
+
+2. NoEmp :The 2nd model in the ANOVA explains the difference between the model with beta0 and "Term" already present in it and the model when I included predictor "NoEmp" in it. The variations in response variable "GrAppv" that was explained by including "Term" in the model is Sum of squares i.e 102.98. The p-value is telling the probability of the difference between the two models being equal to 0. F-statistics is obtained by MSR/MSE = 36.95/0.18 ~ 202.754
+Since the p-value for 1st model is 2.2e-16 which is less than 0, we can reject the null hypothesis and can conclude that variable "NoEmp" is providing enough variations in "GrAppv" to be included in th model.
+
+3. NewExist: The 3nd model in the ANOVA explains the difference between the model with beta0, "NoEmp", "Term" already present in it and the model when I included predictor "NewExist" in it. The variations in response variable "GrAppv" that was explained by including "Term" in the model is Sum of squares i.e 9.89. The p-value is telling the probability of the difference between the two models being equal to 0. F-statistics is obtained by MSR/MSE = 36.95/0.18 ~ 202.754
+Since the p-value for 1st model is 2.397e-13 which is less than 0, we can reject the null hypothesis and can conclude that variable "NewExist" is providing enough variations in "GrAppv" to be included in th model.
+
+4. CreateJob: The 4nd model in the ANOVA explains the difference between the model with beta0, "NoEmp", "NewExist",Term" already present in it and the model when I included predictor "CreateJob" in it. The variations in response variable "GrAppv" that was explained by including "Term" in the model is Sum of squares i.e 14.71. The p-value is telling the probability of the difference between the two models being equal to 0. F-statistics is obtained by MSR/MSE = 80.739. 
+Since the p-value for 1st model is 2.2e-16 which is less than 0, we can reject the null hypothesis and can conclude that variable "CreateJob" is providing enough variations in "GrAppv" to be included in th model.
+
+5. RetainedJob:  The 5nd model in the ANOVA explains the difference between the model with beta0, "NoEmp", "NewExist","CreateJob", Term" already present in it and the model when I included predictor "RetainedJob" in it. The variations in response variable "GrAppv" that was explained by including "Term" in the model is Sum of squares i.e  45.26. The p-value is telling the probability of the difference between the two models being equal to 0. F-statistics is obtained by MSR/MSE = 248.359. 
+Since the p-value for 1st model is 2.2e-16 which is less than 0, we can reject the null hypothesis and can conclude that variable "RetainedJob" is providing enough variations in "GrAppv" to be included in th model.
+
+6. SBA_Appv : The 6nd model in the ANOVA explains the difference between the model with beta0, "NoEmp", "NewExist","CreateJob", Term" already present in it and the model when I included predictor "SBA_Appv" in it. The variations in response variable "GrAppv" that was explained by including "Term" in the model is Sum of squares i.e  318.15. The p-value is telling the probability of the difference between the two models being equal to 0. F-statistics is obtained by MSR/MSE = 1745.852. 
+Since the p-value for 1st model is 2.2e-16 which is less than 0, we can reject the null hypothesis and can conclude that variable "SBA_Appv" is providing enough variations in "GrAppv" to be included in th model.
+
+
+```{r}
+anova(mod)
+```
+
+
+#2. Compute and interpret the ANOVA Type II table for your model. Hint: State the hypothesis being tested, the test statistic and p-value and the conclusion in the context of the problem 
+
+In ANOVA type 2, we begin with the full model with all the terms in it and see what happens when we drop one term out.
+
+Full model : 
+(GrAppv)i = beta0 + beta1*(Term)i + beta2*(NoEmp)i + beta3*(NewExist1)i + beta4*(RetainedJob)i + beta5(CreateJob)i +beta6(SBA_Appv)i +(error)i
+
+1. "Term"
+
+1st model: Compares the full model as stated above with the model in which "Term" is not present.
+reduced model = beta0  + beta2*(NoEmp)i + beta3*(NewExist1)i + beta4*(RetainedJob)i + beta5(CreateJob)i +beta6(SBA_Appv)i +(error)i
+
+There is significant reduction in the residuals when term is present in the model as seen from the sum square value of 19.72, so this suggests that "term" should remain in the model. 
+As the calculated F-value(108.218) is much larger than the f-statistics value of 3.84 from f-distribution, we can reject the null hypothesis and P-value of 2.2e-16 which is smaller than 0.05 also suggest that there is significant difference in the residuals and "Term" is adding enough information in the model.
+
+2. "NoEmp"
+
+2nd model: Compares the full model  with the model in which "NoEmp" is not present.
+reduced model = beta0 + beta1*(Term)i + beta3*(NewExist1)i + beta4*(RetainedJob)i + beta5(CreateJob)i +beta6(SBA_Appv)i +(error)i
+
+There is significant reduction in the residuals when term is present in the model as seen from the sum square value of 2.18, so this suggests that "NoEmp" should remain in the model. 
+As the calculated F-value(11.938) is much larger than the f-statistics value of 3.84 from f-distribution, we can reject the null hypothesis that beta2 is 0, and P-value of 0.0005594 which is smaller than 0.05 also suggest that there is significant difference in the residuals between the two models and "NoEmp" is adding enough information in the model.
+
+3. "NewExist"
+
+3rd model: Compares the full model  with the model in which "NewExist" is not present.
+reduced model = (GrAppv)i = beta0 + beta1*(Term)i + beta2*(NoEmp)i + beta4*(RetainedJob)i + beta5(CreateJob)i +beta6(SBA_Appv)i +(error)i
+
+There is significant reduction in the residuals when term is present in the model as seen from the sum square value of 2.86, so this suggests that "NewExist" should remain in the model. 
+As the calculated F-value(15.721) is much larger than the f-statistics value of 3.84 from f-distribution, we can reject the null hypothesis that beta3 is 0, and P-value of 7.549e-05 which is smaller than 0.05 also suggest that there is significant difference in the residuals between the two models and "NewExist" is adding enough information in the model.
+
+
+4. "CreateJob"
+
+4th model: Compares the full model  with the model in which "CreateJob" is not present.
+reduced model = (GrAppv)i = beta0 + beta1*(Term)i + beta2*(NoEmp)i + beta3*(NewExist1)i + beta4*(RetainedJob)i +beta6(SBA_Appv)i +(error)i
+
+There is significant reduction in the residuals when term is present in the model as seen from the sum square value of  4.28, so this suggests that "CreateJob" should remain in the model. 
+
+As the calculated F-value(23.462) is much larger than the f-statistics value of 3.84 from f-distribution, we can reject the null hypothesis that beta3 is 0, and P-value of 1.354e-06 which is smaller than 0.05 also suggest that there is significant difference in the residuals between the two models and "CreateJob" is adding enough information in the model.
+
+5. "RetainedJob"
+
+5th model: Compares the full model  with the model in which "RetainedJob" is not present.
+reduced model = (GrAppv)i = beta0 + beta1*(Term)i + beta2*(NoEmp)i + beta3*(NewExist1)i  + beta5(CreateJob)i +beta6(SBA_Appv)i +(error)i
+
+
+There is significant reduction in the residuals when term is present in the model as seen from the sum square value of  8.55, so this suggests that "RetainedJob" should remain in the model. 
+
+As the calculated F-value(46.928) is much larger than the f-statistics value of 3.84 from f-distribution, we can reject the null hypothesis that beta3 is 0, and P-value of 9.283e-12 which is smaller than 0.05 also suggest that there is significant difference in the residuals between the two models and "RetainedJob" is adding enough information in the model.
+
+
+6. "SBA_Appv"
+
+6th model: Compares the full model  with the model in which "SBA_Appv" is not present.
+reduced model = (GrAppv)i = beta0 + beta1*(Term)i + beta2*(NoEmp)i + beta3*(NewExist1)i + beta4*(RetainedJob)i + beta5(CreateJob)i +(error)i
+
+There is significant reduction in the residuals when term is present in the model as seen from the sum square value of  318.15, so this suggests that "SBA_Appv" should remain in the model. 
+
+As the calculated F-value(1745.852) is much larger than the f-statistics value of 3.84 from f-distribution, we can reject the null hypothesis that beta3 is 0, and P-value of 2.2e-16 which is smaller than 0.05 also suggest that there is significant difference in the residuals between the two models and "SBA_Appv" is adding enough information in the model.
+
+
+
+
+```{r}
+Anova(mod, type = 2)
+qf(0.05, 1, 2450, lower.tail = FALSE) # calculating alpha-quantile for f-distribution with 1 and 2450 degrees of freedom
+
+```
+
+# Plagiarism declaration
+
+I "Abhishek Kumar" confirm that this assignment is my own work. I have not copied in part or whole or otherwise plagiarised the work of other students and/or persons. I confirm that I have read and understood the UCD School of Mathematics and Statistics regulations on plagiarism in the Week 5 folder on bright space.
+
